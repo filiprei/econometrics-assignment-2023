@@ -1,0 +1,783 @@
+---
+title: "Article Review: Inferring Causal Impact Using Bayesian Structural Time-Series Models"
+format:
+  typst:
+    echo: false
+    warning: false
+    message: false
+    citeproc: true
+    mainfont: Arial
+    fontsize: 12pt
+    papersize: a4
+    fig-format: svg
+    keep-typ: false
+  html:
+    fig-format: retina
+    warning: false
+    message: false
+    code-fold: true
+    code-tools: true
+    filters:
+      - fix_meta_notes.lua
+self-contained: true
+abstract: |
+  | In this report I summarise @brodersen2015 and reproduce simulations as described. I implement ways that these simulations can become reproduceable and describe how @brodersen2015 falls short in this respect. Additionally, I show that a frequentist version of the power curve and coverage give similar resulsts to that in @brodersen2015.
+  | 
+  | *Keywords*: synthetic control, simulation, visualisation
+date: 2023-10-17
+bibliography: bibliography.bib
+date-format: "MMMM D, YYYY"
+author:
+  name: |
+    | Filip Reierson^[This research is supported by an Australian Government Research Training Program (RTP) Scholarship Monash Graduate Excellence Scholarship and Monash Business School Graduate Research Scholarship.]
+    | Econometrics & Business Statistics
+    | Monash University
+---
+
+```{r}
+#| echo: false
+knitr::opts_chunk$set(out.width = '100%')
+```
+
+# Introduction
+
+Organisations often need or benefit from assessing the contribution of
+various parts to a system as a whole. For example, a government agency
+may wish to understand which policies had the desired outcome, and a
+business may wish to understand what decision caused an increase in
+sales. This type of reasoning is known as causal inference.
+
+In this report, I review @brodersen2015 which presents a practical
+approach to modelling causal impact in time series data using state
+space models. The paper was influential as measured by citations and
+people using the accompanying R package. However, the paper's reproducibility is lacking as the dataset used as empirical justification is not available and the simulation section included most, but not all the required inputs. To alleviate these issues I have made this report fully reproducible so that the main insights can be verified. This report was prepared using R [@baseR], quarto for document preparation [@quarto], and R packages by @tidyverse, @patchwork, @latex2exp, and @glue.
+
+```{r}
+library(tidyverse)
+library(patchwork)
+library(latex2exp)
+library(glue)
+```
+
+
+# Synthetic control
+
+A researcher may want to investigate what the effect of a novel government policy has been. In causal language the question is, how different was the observed outcome to what would have been observed were the government policy not implemented? If there is an obvious control such as a similar neighbouring state that did not receive the treatment^[Treatment, intervention, and campaign are used interchangeably to refer to some causal impact that is introduced.] for reasons unrelated to the outcome of interest, then the researcher may use that. However, if there are many candidate controls, none of which on their own are similar to the treated unit, then a different approach is called for. The case where a weighted average of candidate controls can be constructed to resemble the treated unit is the setting that is dealt with in @abadie2003 and @abadie2010. This type of control is known as a synthetic control. Abadie's approach requires that a convex combination of the candidate controls can approximate the outcome for the treated series. The reasoning is that if this synthetic control predicts the treated series well before treatment and the controls were not affected by the treatment, then the synthetic control predicts what would have happened if the treated series had not been treated. 
+
+Abadie's approach requires that the researcher has a set of units which can through a weighted average approximate the treated series. @brodersen2015 propose that a synthetic control can also be constructed as long as there are series that predict the treated series, but may not be a similar kind of unit. For example, instead of advertisement clicks in different regions being used as controls, Google search trends could be used to retrospectively forecast a synthetic control. As with controls in general it is important that the predictors are themselves not affected by the intervention. Additionally, @brodersen2015 uses a spike and slab prior such that uncertainty in choosing predictors in the synthetic control is captured in credible intervals for the causal effect.
+
+# Causal inference
+
+What would have happened in the absence of treatment is never observable in the treated series, but this theoretical series, known as a counterfactual, is still of scientific interest since it makes it possible to determine the causal impact of the treatment. Consider a random walk that is affected by a shock at some point in time, then the causal impact of the shock can be seen as the difference between what occurred and what would have occurred in the absence of the shock. The meaning of a difference can vary depending on the context and hypothesis. For example, when describing the causal effect on a flow quantity it can both make sense to talk about an increase of in a time period and the cumulative effect which is found by adding up multiple periods. To see why, consider @fig-flow. On the other hand, for a stock quantity such as a population, it would not make sense to add up causal effects. In @brodersen2015 both the average effect across the treatment period and the cumulative effect is reported and these provide identical inference about relative effects. In @brodersen2015 a causal effect is considered to be present if the 95% credible interval for the average (or cumulative effect) excludes zero.
+
+```{r}
+library(tidyverse)
+library(patchwork)
+library(latex2exp)
+library(glue)
+theme_set(theme_classic())
+```
+
+```{r}
+set.seed(42)
+ex1 <- data.frame(
+  year = 2014:2023,
+  births = rnorm(10, mean = 10, sd = .5)
+) |>
+  mutate(births_new = ifelse(year >= 2020, 1.1*births, births))
+
+ex1_p1 <- ex1 |>
+  (\(x){
+  ggplot(x,aes(year, births)) +
+    geom_line(alpha=.5) +
+    geom_line(aes(y=births_new)) +
+    geom_linerange(aes(ymin=births,ymax=births_new), lty=3) +
+    geom_text(aes(label='counterfactual',y=births), data=x |> filter(year==max(year)),
+              hjust=0, nudge_x = .25) +
+    geom_text(aes(label='observed',y=births_new), data=x |> filter(year==max(year)),
+              hjust=0, nudge_x = .25) +
+    scale_x_continuous(breaks = 2014:2023) +
+    expand_limits(x=2025.5) +
+    geom_vline(xintercept = 2019, alpha=.25) +
+    labs(x='Year',y='Births')
+  })(x=_)
+ex1_p2 <- ex1 |>
+  ggplot(aes(year,births_new - births)) +
+    geom_linerange(aes(ymin=0,ymax=births_new - births), lty=3) +
+    geom_point() +
+    labs(x='Year',y='Difference in births')
+ex1_p3 <- ex1 |>
+  mutate(cumulative_births = cumsum(births_new - births)) |>
+  ggplot(aes(year,cumulative_births)) +
+    geom_linerange(aes(ymin=lag(cumulative_births),ymax=cumulative_births), 
+                   lty=3) +
+    geom_linerange(aes(
+      y=cumulative_births,
+      xmin=year,
+      xmax=lead(year))) +
+    geom_point() +
+    labs(x='Year',y='Difference in births overall')
+```
+
+```{r}
+#| fig-height: 4.5
+#| label: fig-flow
+#| fig-cap: Taking sums of treatment effect for flow quantities such as births makes intuitive sense. (A) The vertical line indicates the time after which observations were impacted by the treatment. Dotted lines shows the treatment effect visually. (B) The treatment effect. (C) The cumulative treatment effect.
+(ex1_p1 + labs(title='(A)')) / ((ex1_p2+labs(title='(B)')) + (ex1_p3+labs(title='(B)')))
+```
+
+
+
+
+@brodersen2015 fails to describe what exactly their model is estimating in causal notation. A commonly used approach to causal inference is the Rubin
+causal model (RCM), the first ideas of which were introduced in
+@Rubin1974. The notation can be useful to specify exactly which causal effect is being estimated, even if the notation is not strictly necessary to perform the hypothesis testing as a practitioner. 
+
+Let $Y_t(1)$ be the potential cumulative (or average) outcome at time t, with treatment, and $Y_t(0)$ be the potential cumulative (or average) outcome at time t, without treatment. Then the treatment effect is $Y_t(1)-Y_t(0)$ at time t. Let D be an indicator
+random variable denoting treatment status, i.e., it is 1 if the unit is
+treated and 0 otherwise. The causal effect that is estimated by the
+synthetic control methods is the average treatment effect on the treated
+which is defined as,
+
+$$
+\tau_{\mathrm{att}} = \mathbb{E} [Y_t(1)-Y_t(0) | D = 1].
+$$
+
+The potential outcome $Y_t(0)$ is a missing value if t is during the
+post-period which is why the approach by Brodersen is to retrospectively
+forecast the counterfactual to obtain an estimate of
+$\mathbb{E} [Y_t(0) | D = 1]$.
+
+If the counterfactual expectation is correctly predicted then the estimate will be correct. In practice, untreated units or predictors must be used to estimate $E[Y_t(0) | D = 1]$ which requires the assumption that $Y_t(0) \perp D$ so that $E[Y_t(0) | D = 0] = E[Y_t(0) | D = 1] = E[Y_t(0)]$. If the assumption that $Y_t(1) \perp D$ also hold then it is possible to also estimate the average treatment effect,
+
+$$
+\tau_{\mathrm{ate}} = \mathbb{E} [Y_t(1)-Y_t(0)].
+$$
+
+By using the causal notation above it is clear that the approach in @brodersen2015 gives a method for estimating different estimands depending on the assumptions permitted. Furthermore, it is worth noting that if the assumption of $Y_t(0) \perp D$ does not hold then even the ATT can not be determined by @brodersen2015. If there was an abundance of experimental units then it could be possible to correct for a violation of $Y_t(0) \perp D$ if $Y_t(0) \perp D, X$ for covariates $X$ that can predict propensity for treatment. This situation is documented by @dehejia2002 and has a rich literature which favours regression approaches. However, here as in @brodersen2015 I keep the stricter assumptions since there is typically just one or a few treated units in time series applications.
+
+# The model
+
+@brodersen2015 employs a version of synthetic control as well, but instead of
+using simple weights allows for a state space structure and estimates the treatment effect in a Bayesian paradigm. An advantage of this over previous
+methods is that if there is uncertainty about which series are most
+suitable as controls, then this uncertainty is captured in the credible
+intervals. The model can also accommodate temporal structure such as
+seasonality and ARMA models, which can be shown to have state space
+representations. Ignoring temporal dependence can lead to incorrect effect estimates and credible intervals.
+
+With a flexible model overfitting can become an issue, but @brodersen2015 argues that including the set of controls using a Bayesian approach, e.g. spike and slab priors on coefficients,  reduces the risk of overfitting since the model is not fully committed to one set of regressors. A downside of adopting this model is that some prior sensitivity is introduced particularly the level of noise in the level.
+
+The methods in @brodersen2015 are implemented in the CausalImpact R package. The default model used in the R package is a model with a non-stationary trend, spike
+and slab prior on coefficients, and contemporaneous covariates. It is
+possible to allow the coefficients to vary according to a random walk as
+well, which is used for the simulation section in this report.
+
+Any structural time-series model can be written as,
+
+$$
+\begin{split}
+y_t &= Z_t^\intercal \alpha_t + \epsilon_t\\
+\alpha_{t+1} &= T_t \alpha_t + R_t \eta_t,\\
+\end{split}
+$$
+
+where $y_t$ is the outcome and $\alpha_t$ is a state vector and the
+error terms $\epsilon_t$ and $\mu_t$ are Gaussian and independent of all
+other unknowns.
+
+For the case of one predictor $x_t$, allowing for dynamic coefficient,
+and dynamic trend, this can be written in matrix form as, the observation equation,
+
+$$
+y_t = 
+\left[
+\begin{matrix}
+1 & x_t & 0\\
+\end{matrix}
+\right]
+\left[\begin{matrix}
+\mu_{t+1}\\
+\delta_{t+1}\\
+\beta_{t+1}
+\end{matrix}\right] + \epsilon_t,
+$$
+and the state equation,
+
+$$
+\left[\begin{matrix}
+\mu_{t+1}\\
+\delta_{t+1}\\
+\beta_{t+1}
+\end{matrix}\right]
+  = 
+\left[\begin{matrix}
+1 & 0 & 1\\
+0 & 0 & 1\\
+0 & 1 & 0
+\end{matrix}\right]
+  \left[\begin{matrix}
+\mu_{t}\\
+\beta_{t}\\
+\delta_{t}
+\end{matrix}\right]
++
+\left[\begin{matrix}
+1 & 0 & 0 \\
+0 & 1 & 0\\
+0 & 0 & 1
+\end{matrix}
+\right]
+\left[\begin{matrix}
+\eta_{\mu,t}\\
+\eta_{\delta,t}\\
+\eta_{\beta,t}
+\end{matrix}\right].
+$$
+
+Where, $\epsilon_{t}$ and 
+$\eta_t=[\eta_{\mu,t}\ \eta_{\delta,t}\ \eta_{\beta,t}]^\intercal$ are independent Gaussian and $\eta_t$ has a block diagonal variance. @brodersen2015 assumes a gamma prior for $1/\sigma^2_{\mu}$ and $1/\sigma^2_{\delta}$ the inverse of the variances for the level and trend components. The coefficients have a Bernoulli prior for the spike and conjugate normal-inverse Gamma distribution for the slab.
+
+# Simulation
+
+## The data generating process
+
+```{r}
+# simulation 1
+max_t <- (as.Date('2014-06-30') - as.Date('2013-01-01') + 1) |> 
+  as.numeric()
+intervention_t <- (as.Date('2014-01-1') - as.Date('2013-01-01') + 1)
+set.seed(42)
+mu0 <- 20
+dat <- data.frame(
+  t = 1:546
+) |>
+  mutate(
+    z1 = sin(t*2*pi/90),
+    z2 = sin(t*2*pi/360)
+  ) |>
+  cross_join(data.frame(
+    simulation_id=1:2^8
+  )) |>
+  cross_join(data.frame(
+    e = c(0, 0.001, 0.01, 0.05, 0.1, 0.25, 1, rep(0.1, 5)),
+    d = c(rep(180, 7), 30 * 1:5)
+  )) |> 
+  cross_join(data.frame(
+    alternative_setting=c(F,T)
+  )) |>
+  filter(
+    !alternative_setting |
+      (d==180&e==0.1) |
+      (d==180&e==0.05)
+  ) |>
+  filter(t<=366+d) |>
+  arrange(t) |>
+  group_by(simulation_id, e, d, alternative_setting) |>
+  mutate(
+    beta1 = 1 + cumsum(ifelse(alternative_setting, c(rnorm(n()-90,0,0.01),rnorm(90,0,0.03)), rnorm(n(),0,0.01))),
+    beta2 = 1 + cumsum(ifelse(alternative_setting, c(rnorm(n()-90,0,0.01),rnorm(90,0,0.03)), rnorm(n(),0,0.01))),
+    mu = mu0 + cumsum(rnorm(n(),0,0.1)),
+    yt_ = beta1 * z1 + beta2 * z2 + mu + rnorm(n(),0,0.1),
+    yt = yt_ * (t < 366) + yt_ * (1+e) * (1-(t<366))
+  )
+nsims <- 256
+set.seed(42)
+total_iter <- dat |>
+  filter(simulation_id<=nsims,
+         e==0.1 |
+         d==180
+  ) |>
+  group_by(simulation_id, e, d, alternative_setting) |>
+  arrange(t) |>
+  select(simulation_id, e, d, alternative_setting, yt, z1, z2) |>
+  nest() |>
+  ungroup() |>
+  nrow()
+current_iter <- total_iter
+start_time <- as.numeric(lubridate::now())
+
+if(file.exists('sims1-small.Rds')) {
+  sim_res <- readRDS('sims1-small.Rds')
+} else if(!file.exists('sims.Rds')) {
+  sim_res <- dat |>
+    filter(simulation_id<=nsims,
+           e==0.1 |
+             d==180
+    ) |>
+    group_by(simulation_id, e, d, alternative_setting) |>
+    arrange(t) |>
+    select(simulation_id, e, d, alternative_setting, yt, z1, z2) |>
+    nest() |>
+    ungroup() |>
+    rowwise() |>
+    mutate(
+      res = list(
+        (\(data) {
+          ci <- CausalImpact::CausalImpact(data,
+                                     pre.period=c(1,365),
+                                     post.period=c(366,366+d),
+                                     model.args = list(dynamic.regression=T,
+                                                       prior.level.sd=0.1,
+                                                       niter=1000))
+          
+          cat('Iterations remaining: ', current_iter, '\n')
+          current_iter <<- current_iter - 1
+          iter_rate <- (as.numeric(lubridate::now()) - start_time)/(total_iter - current_iter)
+          cat('Sec per iter: ', round(iter_rate, 2),'\n')
+          cat('Est remaining min: ', iter_rate*current_iter/60, '\n')
+          cbind(Average = ci$summary['Average', ],
+                Cumulative = ci$summary['Cumulative', ]) |>
+            as_tibble() |>
+            mutate(Series = list(as.data.frame(ci$series)))
+        })(data)
+      )
+    )
+  saveRDS(sim_res, 'sims.Rds')
+} else {
+  sim_res <- readRDS('sims.Rds')
+}
+if(!file.exists('sims1-small.Rds')) {
+  sim_res <- sim_res |>
+    mutate(res = ifelse(
+      !(d == 180 & e == .1 &
+          simulation_id == 1 & !alternative_setting),
+      list(res |> select(-Series)),
+      list(res)
+    )) |>
+    select(-data)
+  saveRDS(sim_res, 'sims1-small.Rds')
+}
+```
+
+In the simulation section of Brodersen the data is simulated from 1st of
+January 2013 to 30th of June 2014, with a causal effect at 1st of
+January 2014. Equivalently, data can be generated from a time series with
+$t\in T=\{1,2,\ldots,`r max_t`\}$ and an intervention at
+t=`r intervention_t`. In @brodersen2015 the simulations are intended to
+represent ad campaigns, although there appears to be no aspect of the simulation study that is specific to that application.
+
+Brodersen uses the following data generating process,
+
+$$
+\begin{split}
+y_t &= \beta_{t,1}x_{t,1}+\beta_{t,2}x_{t,2}+\mu_t+\epsilon_t\\
+\beta_{t,i} &\sim \mathcal{N}(\beta_{t-1,i},0.01^2);\quad \beta_{0,i}=0; \quad i \in \{1,2\}\\
+\mu_t &\sim \mathcal{N}(\mu_{t-1},0.1^2);\quad\mu_0=20\\
+\epsilon_t &\sim \mathcal{N}(0,0.1^2).
+\end{split}
+$$ 
+
+Based on visual inspection of Figure 3 (a) in @brodersen2015 it appears
+that $\mu_0\approx20$, not $\mu_0=0$ as stated in the text. A positive
+series is necessary for a multiplicative effect to have a meaningful
+interpretation for ad campaign outcomes such as clicks or sales,
+therefore I use $\mu_0=20$, which appears to be the intended value. Another point of ambiguity is that in @brodersen2015 the particular kind of sinusoid covariate that is used for $x_{1}$ and $x_{2}$ is not specified, only their period. This means that the data generating process is technically not specified in @brodersen2015 and so any reproduction can't expect the same results. 
+
+@brodersen2015 applies a multiplicative factor to imitate a causal effect so
+that the final observations are given by
+$y^*_t=y_t \mathbb{I}\{t<366\}+y_t(1+e)(1-\mathbb{I}\{t<366\})$, where
+$\mathbb{I}\{f(t)\}$ is the indicator function that evaluates to 1 when
+$t \in \{w : f(w)\}$ and 0 otherwise. It is easy to see that the simulation would be affected by the magnitude of $y_t$ since this imposed shock is relative. In reality many changes are gradual so the approach used by @brodersen2015 in simulations may be unrealistic. This intuition is visually supported by @fig-multiplicative-effect, which shows how a simulated series would be shifted based on different effect sizes. 
+
+```{r}
+#| fig-cap: Examples of how @brodersen2015 applies a multiplicative factor in simulations to imitate the effect of a sustained intervention effect.
+#| label: fig-multiplicative-effect
+dat |>
+  ungroup() |>
+  filter(e==0.1,d==180,!alternative_setting) |>
+  filter(simulation_id==1) |>
+  select(-e) |>
+  cross_join(data.frame(
+    e=c(0, 0.1,0.25,1)
+  )) |>
+  mutate(
+    yt = yt_ * (1 + ifelse(t < 366, 0, e))
+  ) |>
+  (\(x) {
+    ggplot(x,aes(
+    t,yt, group=interaction(e,t < 366)
+  )) +
+    geom_line() +
+    geom_text(aes(label=glue('e = {scales::label_percent(1)(e)}')), 
+              data=x |> filter(t==max(t)),
+              hjust=0, nudge_x = 10) +
+    expand_limits(y=0,x=630) +
+    geom_vline(xintercept = 365.5, alpha=.25) +
+    labs(y=TeX('$y_t$'))
+  })(x=_)
+```
+
+In @brodersen2015, the time series was simulated in 256 times for each effect
+size $e\in\{0,0.001,0.01,0.1,1\}$. Although, Figure 3 (b) actually shows effect sizes 25% and 50% which were not mentioned in the text. I opted to simulate $e\in\{0,0.001,0.01,0.05, 0.1, 0.25 ,1\}$. Additionally for $e=0.1$ the time
+series was simulated 256 times for different campaign durations
+$\max T - 366 \in \{30,60,90,120,150,180\}$ to study the coverage properties of changing the campaign duration.
+
+## Model fitting
+
+For illustrative purposes, a simulation realisation is visualised in
+@fig-sample-simulation where the true effect size was 0.1 and the ad
+campaign was 180 days. The same realisation was used to fit the
+CausalImpact model proposed by Brodersen which is visualised in
+@fig-sample-causal-impact. Up until the campaign the model fits very
+well so it is not unreasonable to expect that the series $X_1$ and $X_2$
+could predict $Y_t(0)$ once the intervention period has started. As is
+the case for regular forecasting, the counterfactual forecasts also get
+increasingly uncertain further past the intervention date.
+
+```{r}
+#| fig-cap: An example simulation realisation with effect size 0.1 and intervention, e.g. ad campaign, lasting 180 days.
+#| label: fig-sample-simulation
+#| fig-height: 8
+old_names <- c('beta1', 'beta2', 'mu',
+               'z1', 'z2', 'yt')
+example_filter <- \(x) filter(x, d == 180, e == .1,
+                              simulation_id == 1,!alternative_setting)
+example_dat_long <- dat |>
+  example_filter() |>
+  pivot_longer(-c(t, simulation_id)) |>
+  filter(name %in% old_names) |>
+  mutate(name = factor(name, levels = old_names))
+levels(example_dat_long$name) <- c(
+  'beta1' = TeX('$\\beta_{t,1}$'),
+  'beta2' = TeX('$\\beta_{t,2}$'),
+  'mu' = TeX('$\\mu_t$'),
+  'z1' = TeX('$x_{t,1}$'),
+  'z2' = TeX('$x_{t,2}$'),
+  'yt' = TeX('$y_t$')
+)
+example_dat_long |>
+  ggplot(aes(t,value,group=simulation_id)) +
+    facet_wrap(~name, scales='free_y', ncol=2, 
+               labeller = label_parsed) +
+    geom_line(lwd=.25) + 
+    theme(legend.position = 'none',
+          axis.title.y.left = element_blank())
+```
+
+```{r}
+p1 <- sim_res |>
+  example_filter() |>
+  unnest(res) |>
+  select(Series) |>
+  unnest(Series) |>
+  rowid_to_column('t') |>
+  (\(.)
+  ggplot(.,aes(t, )) +
+    geom_ribbon(aes(ymin=point.pred.lower, ymax=point.pred.upper), alpha=.75, fill='lightblue') +
+    geom_line(aes(y=point.pred), color='darkblue') +
+    geom_line(aes(y=response)) +
+    ggrepel::geom_text_repel(aes(y=point.pred), box.padding = .2, direction = 'y', nudge_x = 30, label=TeX('$\\hat{Y_t(0)}$'), color='darkblue', data=.|>slice_max(t)) +
+    ggrepel::geom_text_repel(aes(y=response), box.padding = .2, direction = 'y', nudge_x = 30, label=TeX('$Y_t(1)$'), data=.|>slice_max(t)) +
+    labs(x='t', y='Response unit (e.g. clicks)') +
+    geom_vline(xintercept = 365.5, alpha=.25) +
+    theme_bw()
+  )(.=_)
+p2 <- sim_res |>
+  example_filter() |>
+  unnest(res) |>
+  select(Series) |>
+  unnest(Series) |>
+  rowid_to_column('t') |>
+  mutate(true_effect = ifelse(t>=366,.1,0)*response) |>
+  (\(.)
+  ggplot(.,aes(t, point.effect)) +
+    geom_ribbon(aes(ymin=point.effect.lower, ymax=point.effect.upper), alpha=.75, fill='lightblue') +
+    geom_line() +
+    geom_line(aes(y=true_effect), lty=2) +
+    labs(x='t', y='Point causal effect') +
+    geom_hline(yintercept = 0, alpha=.25) +
+    geom_vline(xintercept = 365.5, alpha=.25) +
+    theme_bw()
+  )(.=_)
+p3 <- sim_res |>
+  example_filter() |>
+  unnest(res) |>
+  select(Series) |>
+  unnest(Series) |>
+  rowid_to_column('t') |>
+  mutate(true_effect = cumsum(ifelse(t>=366,response*.1,0))) |>
+  (\(.)
+  ggplot(.,aes(t, cum.effect)) +
+    geom_ribbon(aes(ymin=cum.effect.lower, ymax=cum.effect.upper), alpha=.75, fill='lightblue') +
+    geom_line() +
+    geom_line(aes(y=true_effect), lty=2) +
+    geom_hline(yintercept = 0, alpha=.25) +
+    geom_vline(xintercept = 365.5, alpha=.25) +
+    labs(x='t', y='Cumulative causal effect') +
+    theme_bw()
+  )(.=_)
+```
+
+```{r}
+#| fig-cap: (A) Using the same simulation realisation as in @fig-sample-simulation,  the response is compared to a retrospectively forecasted counterfactual, $\hat{Y}_t(0)$, along with a 95% credibility interval which gets wider as the time since the start of the campaign increases. (B) The point estimate causal effect based on the observed response less the forecasted counterfactual. Dashed line shows ground truth (by construction). (C) The estimated cumulative causal effect defined as the sum of point causal effects.
+#| fig-height: 7
+#| label: fig-sample-causal-impact
+(p1 + labs(title='(A)')) / (p2 + labs(title='(B)')) / (p3 + labs(title='(C)'))
+```
+
+## Results
+
+One of the seemingly key plots in the Brodersen paper, Figure 3 (b), is
+reproduced in @fig-power-coverage (A), using inputs ascertained from the
+simulation section of @brodersen2015. The plot shows the proportion of simulations in each of the effect size settings that rejected the null hypothesis of no causal impact in the positive direction. The null was rejected when the lower bound of the 95% credible interval for the average effect was above zero. As noted in @brodersen2015, this provides an estimate of sensitivity . The results are different to those of Brodersen, although this is not surprising given the lack of specific information around covariates used by @brodersen2015. Higher effect sizes are more likely to picked up, but the power will depend on the particular data generating process, in particular the amount of noise. 
+
+@fig-power-coverage (B) confirms that for the
+most part the coverage probability is reasonable for different campaign
+durations. It also shows how the Bayesian approach leads to a shrinkage estimator, which on the whole provides a similar result qualitatively. 
+
+@fig-structural-change shows the impact on estimation accuracy of a change to standard deviation of dynamic coefficients 90 days into the treatment period. The situation considered is a 180 day treatment period and an effect size e=10%. The simulation was run 64 times for each setting. Stated mathematically, for some new standard deviation $c$, the coefficients evolve according to,
+
+$$
+\beta_{t,i} \sim 
+\begin{cases}
+\mathcal{N}(\beta_{t-1,i},\ 0.01^2) &\text{if } t < 366+90\\
+\mathcal{N}(\beta_{t-1,i},\ c^2) &\text{otherwise}.
+\end{cases}
+$$
+
+The figure shows that for a small change to $c$ there is not a meaningful deterioration of estimation accuracy. This differs from Figure 4 (a) in @brodersen2015. The discrepancy can be attributed to this reproduction using unit sinusoids for the covariates while @brodersen2015 appear to be using something else, otherwise the estimation error would periodically converge with the no structural change case when covariates are zero. However, instead of guessing what @brodersen2015 may have meant, I use the most reasonable interpretation of the text. The structural change with a new standard deviation of 0.3 does however show a similar increase in relative absolute error to that in @brodersen2015, but clearly with much more influence from the sinusoidal nature of the covariate.
+
+```{r}
+#| fig-cap: (A) The empirical prevalence of credibility intervals that exclude zero in the positive direction, i.e., a power curve, for the simulation setting with a 180 day intervention period. (B) The empirical coverage of causal effect credibility interval for simulations of different campaign durations. Frequentist 95% confidence interval estimated by $\hat{p} \pm 1.96 \sqrt{\hat{p} (1-\hat{p}) / n}$. Bayesian 95% credibility interval determined with a uniform(0,1) prior. The point estimate in the frequentist case is the MLE $\hat p$ and in the Bayesian case the posterior expectation. 
+#| label: fig-power-coverage
+#| fig-height: 7
+fig3_p1 <- sim_res |>
+  filter(!alternative_setting, d==180) |>
+  unnest(res) |>
+  select(where(negate(is.list))) |>
+  group_by(e, d) |>
+  summarise(
+    reject = sum(0 < Average.RelEffect.lower),
+    not_reject = n() - reject,
+    .groups='drop'
+  ) |>
+  mutate(
+    alpha = 1 + reject,
+    beta = 1 + not_reject,
+    ll = qbeta(.025, alpha, beta),
+    ul = qbeta(.975, alpha, beta),
+    rejection_rate = alpha/(alpha + beta)
+  ) |>
+  mutate(Group = 'Bayesian') |>
+  bind_rows(
+    sim_res |>
+  filter(!alternative_setting, d==180) |>
+  unnest(res) |>
+  select(where(negate(is.list))) |>
+  group_by(e, d) |>
+  summarise(
+    rejection_rate = mean(0 < Average.RelEffect.lower),
+    sd_err = sqrt(rejection_rate * (1-rejection_rate) / n()),
+    ll = rejection_rate - 1.96 * sd_err,
+    ul = rejection_rate + 1.96 * sd_err,
+    .groups = 'drop'
+  ) |>
+    mutate(Group = 'Frequentist')
+  ) |>
+  (\(x)
+  ggplot(x,aes(x=factor(e), y=rejection_rate, ymin=ll, ymax=ul,
+             color=Group)) +
+    geom_pointrange(pch=1, position = position_dodge2(.3)) +
+    geom_text(aes(label=Group), data=x|>filter(e==.1),
+              angle=90, position = position_dodge2(1.25),
+              vjust=.5) +
+    scale_x_discrete(labels=\(x)scales::label_percent(.1)(as.numeric(x))) +
+    scale_y_continuous(labels=scales::label_percent(1)) +
+    scale_colour_manual(values = c(Bayesian='blue', Frequentist='darkgreen')) +
+    labs(x='True relative effect (e)', y='Rejection rate',
+         title='(A)') +
+    theme(legend.position = 'none'))(x=_)
+fig3_p2 <- sim_res |>
+  filter(!alternative_setting,e==.1) |>
+  unnest(res) |>
+  select(where(negate(is.list))) |>
+  group_by(d) |>
+  summarise(
+    covered = sum(between(e, Average.RelEffect.lower, Average.RelEffect.upper)),
+    not_covered = n() - sum(between(e, Average.RelEffect.lower, Average.RelEffect.upper)),
+    .groups = 'drop'
+  ) |>
+  mutate(
+    alpha = 1 + covered,
+    beta = 1 + not_covered,
+    ll = qbeta(.025, alpha, beta),
+    ul = qbeta(.975, alpha, beta),
+    p = alpha/(alpha + beta)
+  ) |>
+  mutate(Group = 'Bayesian') |>
+  bind_rows(
+    sim_res |>
+      filter(!alternative_setting, e == .1) |>
+      unnest(res) |>
+      select(where(negate(is.list))) |>
+      group_by(d) |>
+      summarise(
+        p = mean(between(
+          e, Average.RelEffect.lower, Average.RelEffect.upper
+        )),
+        sd_err = sqrt(p * (1 - p) / n())
+      ) |>
+      mutate(
+        ll = p - 1.96 * sd_err,
+        ul = p + 1.96 * sd_err,
+        .groups = 'drop'
+      ) |>
+      mutate(Group = 'Frequentist')
+  ) |>
+  (\(x)
+  ggplot(x,aes(x=factor(d), y=p, ymin=ll, ymax=ul,
+             color=Group)) +
+    geom_pointrange(pch=1, position = position_dodge2(.3)) +
+    geom_text(aes(label=Group), data=x|>filter(d==90),
+              angle=90, position = position_dodge2(1.25),
+              vjust=.5) +
+    scale_x_discrete() +
+    scale_y_continuous(labels=scales::label_percent(1)) +
+    scale_colour_manual(values = c(Bayesian='blue', Frequentist='darkgreen')) +
+    geom_hline(yintercept = .95, lty=2) +
+    labs(x='Campaign duration', y='Coverage probability',
+         title='(B)') +
+    theme(legend.position = 'none'))(x=_)
+fig3_p1 / fig3_p2
+```
+
+```{r}
+# simulation 2
+max_t <- (as.Date('2014-06-30') - as.Date('2013-01-01') + 1) |> 
+  as.numeric()
+intervention_t <- (as.Date('2014-01-1') - as.Date('2013-01-01') + 1)
+set.seed(42)
+mu0 <- 20
+dat2 <- data.frame(
+  t = 1:546
+) |>
+  mutate(
+    z1 = sin(t*2*pi/90),
+    z2 = sin(t*2*pi/360)
+  ) |>
+  cross_join(data.frame(
+    simulation_id=1:2^8
+  )) |>
+  cross_join(data.frame(
+    e = c(0.1),
+    d = c(180),
+    new_sd = c(0.01,0.1, 0.3)
+  )) |> 
+  filter(t<=366+d) |>
+  arrange(t) |>
+  group_by(simulation_id, e, d, new_sd) |>
+  mutate(
+    beta1 = 1 + cumsum(c(rnorm(n()-90,0,0.01),rnorm(90,0,new_sd))),
+    beta2 = 1 + cumsum(c(rnorm(n()-90,0,0.01),rnorm(90,0,new_sd))),
+    mu = mu0 + cumsum(rnorm(n(),0,0.1)),
+    yt_ = beta1 * z1 + beta2 * z2 + mu + rnorm(n(),0,0.1),
+    yt = yt_ * (t < 366) + yt_ * (1+e) * (1-(t<366))
+  )
+nsims <- 64
+set.seed(42)
+total_iter <- dat2 |>
+  filter(simulation_id<=nsims) |>
+  group_by(simulation_id, e, d, new_sd) |>
+  arrange(t) |>
+  select(simulation_id, e, d, new_sd, yt, z1, z2) |>
+  nest() |>
+  ungroup() |>
+  nrow()
+current_iter <- total_iter
+start_time <- as.numeric(lubridate::now())
+if(file.exists('sims2-small.Rds')) {
+  sim_res2 <- readRDS('sims2-small.Rds')
+} else if(!file.exists('sims2.Rds')) {
+  sim_res2 <- dat2 |>
+    filter(simulation_id<=nsims) |>
+    group_by(simulation_id, e, d, new_sd) |>
+    arrange(t) |>
+    select(simulation_id, e, d, new_sd, yt, z1, z2) |>
+    nest() |>
+    ungroup() |>
+    rowwise() |>
+    mutate(
+      res = list(
+        (\(data) {
+          ci <- CausalImpact::CausalImpact(data,
+                                     pre.period=c(1,365),
+                                     post.period=c(366,366+d),
+                                     model.args = list(dynamic.regression=T,
+                                                       prior.level.sd=0.1,
+                                                       niter=1000))
+          
+          cat('Iterations remaining: ', current_iter, '\n')
+          current_iter <<- current_iter - 1
+          iter_rate <- (as.numeric(lubridate::now()) - start_time)/(total_iter - current_iter)
+          cat('Sec per iter: ', round(iter_rate, 2),'\n')
+          cat('Est remaining min: ', iter_rate*current_iter/60, '\n')
+          cbind(Average = ci$summary['Average', ],
+                Cumulative = ci$summary['Cumulative', ]) |>
+            as_tibble() |>
+            mutate(Series = list(as.data.frame(ci$series)))
+        })(data)
+      )
+    )
+  saveRDS(sim_res2, 'sims2.Rds')
+} else {
+  sim_res2 <- readRDS('sims2.Rds')
+}
+if(!file.exists('sims2-small.Rds')) {
+  sim_res2 |>
+    select(-data) |>
+    mutate(res = list(res |> select(Series))) |>
+    unnest(res) |>
+    rowwise() |>
+    mutate(Series = list(Series |> select(point.effect,response))) |>
+    saveRDS('sims2-small.Rds')
+}
+```
+
+```{r}
+#| fig-height: 4.5
+#| fig-cap: The absolute percentage error for pointwise treatment effect compared to the constructed true effect for a structural change in the coefficient dynamics. Vertical line indicates structural change. Shaded 95% confidence intervals estimated by $\hat\mu\pm 1.96\hat\sigma/\sqrt{64}$ at each time point, where $\hat\mu$ is the sample mean absolute % error, and $\hat\sigma$ is the sample standard deviation of the mean absolute % error. Note that a new SD of 0.01 corresponds to no structural change.
+#| label: fig-structural-change
+sim_res2 |>
+  mutate(Series = list(rowid_to_column(Series, 't'))) |>
+  unnest(Series) |>
+  mutate(
+    true_effect = response / (1 + e) * e,
+    err = abs(point.effect - true_effect) / true_effect
+  ) |>
+  group_by(t, new_sd) |>
+  summarise(
+    mean_err = mean(err),
+    sd_err = sd(err) / sqrt(n()),
+    ll = mean_err - 1.96 * sd_err,
+    ul = mean_err + 1.96 * sd_err,
+    .groups = 'drop'
+  ) |>
+  filter(t>365) |>
+  ggplot(aes(t, mean_err, color = factor(new_sd), group = factor(new_sd))) +
+  geom_ribbon(aes(ymin = ll, ymax = ul, fill = factor(new_sd), color=NULL),
+              alpha = .25) +
+  geom_line() +
+  geom_vline(xintercept = max_t - 90, lty=2, alpha=.25) +
+  labs(color='New SD',
+       fill='New SD',
+       y='Mean absolute % error') +
+  scale_y_continuous(labels = scales::label_percent(1)) +
+  theme(legend.position = 'top')
+```
+
+```{r}
+writeLines(capture.output(sessionInfo()), "sessionInfo.txt")
+```
+
+
+# Conclusion
+
+@brodersen2015 provides a reasonable way for constructing synthetic controls in a largely automated and easy to implement way. However, the paper falls short in terms of describing causality in clear notation and the data generating process in simulation section falls short of best practices in reproducible research. In this report I have made the causal notation and language more explicit and repeated simulations in a way that is reproducible. 
+
+# References
+
+::: {#refs}
+:::
+
+
