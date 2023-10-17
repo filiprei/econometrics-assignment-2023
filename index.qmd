@@ -21,7 +21,7 @@ format:
       - fix_meta_notes.lua
 self-contained: true
 abstract: |
-  | In this report I summarise @brodersen2015 and reproduce simulations as described. I implement ways that these simulations can become reproduceable and describe how @brodersen2015 falls short in this respect. Additionally, I show that a frequentist version of the power curve and coverage give similar resulsts to that in @brodersen2015.
+  | In this report I summarise @brodersen2015 and reproduce simulations as described. I implement ways that these simulations can become reproduceable and describe how @brodersen2015 falls short in this respect. Additionally, I show that a frequentist version of the power curve and coverage give similar results to that in @brodersen2015.
   | 
   | *Keywords*: synthetic control, simulation, visualisation
 date: 2023-10-17
