@@ -26,10 +26,13 @@ loaded via a namespace (and not attached):
  [1] gtable_0.3.4      jsonlite_1.8.7    compiler_4.3.1    Rcpp_1.0.11      
  [5] tidyselect_1.2.0  scales_1.2.1      yaml_2.3.7        fastmap_1.1.1    
  [9] R6_2.5.1          labeling_0.4.3    generics_0.1.3    knitr_1.44       
-[13] ggrepel_0.9.3     munsell_0.5.0     pillar_1.9.0      tzdb_0.4.0       
-[17] rlang_1.1.1       utf8_1.2.3        stringi_1.7.12    xfun_0.40        
-[21] timechange_0.2.0  cli_3.6.1         withr_2.5.0       magrittr_2.0.3   
-[25] digest_0.6.33     grid_4.3.1        rstudioapi_0.15.0 hms_1.1.3        
-[29] lifecycle_1.0.3   vctrs_0.6.3       evaluate_0.21     farver_2.1.1     
-[33] fansi_1.0.4       colorspace_2.1-0  rmarkdown_2.25    tools_4.3.1      
-[37] pkgconfig_2.0.3   htmltools_0.5.6  
+[13] htmlwidgets_1.6.2 ggrepel_0.9.3     munsell_0.5.0     pillar_1.9.0     
+[17] tzdb_0.4.0        rlang_1.1.1       utf8_1.2.3        stringi_1.7.12   
+[21] xfun_0.40         timechange_0.2.0  cli_3.6.1         withr_2.5.0      
+[25] magrittr_2.0.3    digest_0.6.33     grid_4.3.1        rstudioapi_0.15.0
+[29] hms_1.1.3         lifecycle_1.0.3   vctrs_0.6.3       evaluate_0.21    
+[33] farver_2.1.1      fansi_1.0.4       colorspace_2.1-0  rmarkdown_2.25   
+[37] tools_4.3.1       pkgconfig_2.0.3   htmltools_0.5.6  
+
+quarto version:
+ [1] '1.4.388'

@@ -5477,7 +5477,10 @@ Figure 6: The absolute percentage error for pointwise treatment effect compared
 <div class="cell">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">writeLines</span>(<span class="fu">capture.output</span>(<span class="fu">sessionInfo</span>()), <span class="st">&quot;sessionInfo.txt&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">writeLines</span>(</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">glue</span>(</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&#39;{paste0(capture.output(sessionInfo()), collapse=&quot;</span><span class="sc">\n</span><span class="st">&quot;)}</span><span class="sc">\n\n</span><span class="st">quarto version:</span><span class="sc">\n</span><span class="st"> {capture.output(quarto::quarto_version())[[1]]}&#39;</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>  ), <span class="st">&quot;sessionInfo.txt&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
 </section>
@@ -6747,19 +6750,22 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
 <span id="cb14-793"><a href="#cb14-793" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
 <span id="cb14-794"><a href="#cb14-794" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb14-797"><a href="#cb14-797" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
-<span id="cb14-798"><a href="#cb14-798" aria-hidden="true" tabindex="-1"></a><span class="fu">writeLines</span>(<span class="fu">capture.output</span>(<span class="fu">sessionInfo</span>()), <span class="st">&quot;sessionInfo.txt&quot;</span>)</span>
-<span id="cb14-799"><a href="#cb14-799" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb14-800"><a href="#cb14-800" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-801"><a href="#cb14-801" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-802"><a href="#cb14-802" aria-hidden="true" tabindex="-1"></a><span class="fu"># Conclusion</span></span>
+<span id="cb14-798"><a href="#cb14-798" aria-hidden="true" tabindex="-1"></a><span class="fu">writeLines</span>(</span>
+<span id="cb14-799"><a href="#cb14-799" aria-hidden="true" tabindex="-1"></a>  <span class="fu">glue</span>(</span>
+<span id="cb14-800"><a href="#cb14-800" aria-hidden="true" tabindex="-1"></a>    <span class="st">&#39;{paste0(capture.output(sessionInfo()), collapse=&quot;</span><span class="sc">\n</span><span class="st">&quot;)}</span><span class="sc">\n\n</span><span class="st">quarto version:</span><span class="sc">\n</span><span class="st"> {capture.output(quarto::quarto_version())[[1]]}&#39;</span></span>
+<span id="cb14-801"><a href="#cb14-801" aria-hidden="true" tabindex="-1"></a>  ), <span class="st">&quot;sessionInfo.txt&quot;</span>)</span>
+<span id="cb14-802"><a href="#cb14-802" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
 <span id="cb14-803"><a href="#cb14-803" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-804"><a href="#cb14-804" aria-hidden="true" tabindex="-1"></a>@brodersen2015 provides a reasonable way for constructing synthetic controls in a largely automated and easy to implement way. However, the paper falls short in terms of describing causality in clear notation and the data generating process in simulation section falls short of best practices in reproducible research. In this report I have made the causal notation and language more explicit and repeated simulations in a way that is reproducible. </span>
-<span id="cb14-805"><a href="#cb14-805" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-806"><a href="#cb14-806" aria-hidden="true" tabindex="-1"></a><span class="fu"># References</span></span>
-<span id="cb14-807"><a href="#cb14-807" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-808"><a href="#cb14-808" aria-hidden="true" tabindex="-1"></a>::: {#refs}</span>
-<span id="cb14-809"><a href="#cb14-809" aria-hidden="true" tabindex="-1"></a>:::</span>
+<span id="cb14-804"><a href="#cb14-804" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-805"><a href="#cb14-805" aria-hidden="true" tabindex="-1"></a><span class="fu"># Conclusion</span></span>
+<span id="cb14-806"><a href="#cb14-806" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-807"><a href="#cb14-807" aria-hidden="true" tabindex="-1"></a>@brodersen2015 provides a reasonable way for constructing synthetic controls in a largely automated and easy to implement way. However, the paper falls short in terms of describing causality in clear notation and the data generating process in simulation section falls short of best practices in reproducible research. In this report I have made the causal notation and language more explicit and repeated simulations in a way that is reproducible. </span>
+<span id="cb14-808"><a href="#cb14-808" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-809"><a href="#cb14-809" aria-hidden="true" tabindex="-1"></a><span class="fu"># References</span></span>
 <span id="cb14-810"><a href="#cb14-810" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-811"><a href="#cb14-811" aria-hidden="true" tabindex="-1"></a>::: {#refs}</span>
+<span id="cb14-812"><a href="#cb14-812" aria-hidden="true" tabindex="-1"></a>:::</span>
+<span id="cb14-813"><a href="#cb14-813" aria-hidden="true" tabindex="-1"></a></span>
 </code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div></div></div></div></div>
 </div> <!-- /content -->

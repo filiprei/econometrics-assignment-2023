@@ -1,3 +1,5 @@
 project:
+  render: 
+    - index.qmd
   type: website
   output-dir: docs

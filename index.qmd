@@ -767,7 +767,10 @@ sim_res2 |>
 ```
 
 ```{r}
-writeLines(capture.output(sessionInfo()), "sessionInfo.txt")
+writeLines(
+  glue(
+    '{paste0(capture.output(sessionInfo()), collapse="\n")}\n\nquarto version:\n {capture.output(quarto::quarto_version())[[1]]}'
+  ), "sessionInfo.txt")
 ```
 
 
