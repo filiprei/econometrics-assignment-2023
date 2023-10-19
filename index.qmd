@@ -193,7 +193,7 @@ $$
 y_t = 
 \left[
 \begin{matrix}
-1 & x_t & 0\\
+1 & 0 & x_t\\
 \end{matrix}
 \right]
 \left[\begin{matrix}
@@ -202,6 +202,7 @@ y_t =
 \beta_{t+1}
 \end{matrix}\right] + \epsilon_t,
 $$
+
 and the state equation,
 
 $$
@@ -454,6 +455,7 @@ example_dat_long |>
     theme(legend.position = 'none',
           axis.title.y.left = element_blank())
 ```
+
 
 ```{r}
 p1 <- sim_res |>

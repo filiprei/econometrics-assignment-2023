@@ -1,0 +1,497 @@
+---
+title: "Inferring Causal Impact Using Bayesian Structural Time-Series Models"
+author: Filip Reierson
+date: 2023-08-23
+date-format: 'YYYY'
+format: 
+  revealjs:
+    theme: [default, theme.scss]
+    css: theme.css
+    fig-format: retina
+    margin-left: '3rem'
+    embed-resources: true
+history: false
+navigation-mode: linear
+controls: false
+slide-number: true
+progress: true
+menu: true
+smaller: true
+scrollable: false
+margin: 0.1
+revealOptions:
+  width: 1280
+  height: 720
+disable-layout: false
+transition: fade
+transition-speed: default
+center: false
+bibliography: ../bibliography.bib
+include-before-body: 
+  text: |
+    <script>
+      var up = false;
+      var lastPosition;
+      
+      var interval = setInterval(function () {
+      var $container = $("#divContainer1");
+      var position = $container.scrollTop();
+      var height = $container[0].scrollHeight;
+      
+      // If we haven't moved, switch direction
+      if(position === lastPosition) up = !up;
+      lastPosition = position;
+      
+      if (up) {
+          // Going up
+          $container.scrollTop(position - 5);
+      } else {
+          // Going down
+          $container.scrollTop(position + 5);
+      }
+      }, 100);
+    </script>
+    <script>
+      var up2 = false;
+      var lastPosition2;
+      
+      var interval2 = setInterval(function () {
+      var $container2 = $("#divContainer2");
+      var position2 = $container2.scrollTop();
+      var height2 = $container2[0].scrollHeight;
+      
+      // If we haven't moved, switch direction
+      if(position2 === lastPosition2) up2 = !up2;
+      lastPosition2 = position2;
+      
+      if (up2) {
+          // Going up
+          $container2.scrollTop(position2 - 5);
+      } else {
+          // Going down
+          $container2.scrollTop(position2 + 5);
+      }
+      }, 100);
+    </script>
+    <script>
+      var up3 = false;
+      var lastPosition3;
+      
+      var interval3 = setInterval(function () {
+      var $container3 = $("#divContainer3");
+      var position3 = $container3.scrollTop();
+      var height3 = $container3[0].scrollHeight;
+      
+      // If we haven't moved, switch direction
+      if(position3 === lastPosition3) up3 = !up3;
+      lastPosition3 = position3;
+      
+      if (up3) {
+          // Going up
+          $container3.scrollTop(position3 - 5);
+      } else {
+          // Going down
+          $container3.scrollTop(position3 + 5);
+      }
+      }, 100);
+      </script>
+      <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+---
+
+```{r}
+library(tidyverse)
+library(patchwork)
+library(latex2exp)
+library(glue)
+theme_set(theme_classic())
+```
+
+```{r}
+set.seed(42)
+ex1 <- data.frame(
+  year = 2014:2023,
+  births = rnorm(10, mean = 10, sd = .5)
+) |>
+  mutate(births_new = ifelse(year >= 2020, 1.1*births, births))
+```
+
+## Introduction
+
+```{r}
+ex1 |>
+  (\(x){
+  ggplot(x,aes(year, births)) +
+    geom_line(aes(y=births_new)) +
+    geom_text(aes(label='observed',y=births_new), data=x |> filter(year==max(year)),
+              hjust=0, nudge_x = .25) +
+    scale_x_continuous(breaks = 2014:2023) +
+    expand_limits(x=2025.5) +
+    geom_vline(xintercept = 2019.5, alpha=.25) +
+    labs(x='Year',y='Births')
+  })(x=_)
+```
+
+## Introduction
+
+```{r}
+ex1 |>
+  (\(x){
+  ggplot(x,aes(year, births)) +
+    geom_line(alpha=.5) +
+    geom_line(aes(y=births_new)) +
+    geom_linerange(aes(ymin=births,ymax=births_new), lty=3) +
+    geom_text(aes(label='counterfactual',y=births), data=x |> filter(year==max(year)),
+              hjust=0, nudge_x = .25) +
+    geom_text(aes(label='observed',y=births_new), data=x |> filter(year==max(year)),
+              hjust=0, nudge_x = .25) +
+    scale_x_continuous(breaks = 2014:2023) +
+    expand_limits(x=2025.5) +
+    geom_vline(xintercept = 2019.5, alpha=.25) +
+    labs(x='Year',y='Births')
+  })(x=_)
+```
+
+## Introduction
+
+```{r}
+ex1 |>
+  ggplot(aes(year,births_new - births)) +
+    geom_linerange(aes(ymin=0,ymax=births_new - births), lty=3) +
+    geom_point() +
+    geom_vline(xintercept = 2019.5, alpha=.25) +
+    labs(x='Year',y='Difference in births')
+```
+
+## Introduction
+
+```{r}
+ex1 |>
+  mutate(y=births_new - births) |>
+  ggplot(aes(year,y)) +
+    geom_linerange(aes(ymin=0,ymax=births_new - births), lty=3) +
+    geom_point() +
+    geom_line(data=ex1 |> 
+                filter(year > 2019) |> 
+                mutate(y=cummean(births_new - births))) +
+    geom_vline(xintercept = 2019.5, alpha=.25) +
+    labs(x='Year',y='Difference in births')
+```
+
+## Introduction
+
+```{r}
+ex1 |>
+  mutate(cumulative_births = cumsum(births_new - births)) |>
+  ggplot(aes(year,cumulative_births)) +
+    geom_linerange(aes(ymin=lag(cumulative_births),ymax=cumulative_births), 
+                   lty=3) +
+    geom_linerange(aes(
+      y=cumulative_births,
+      xmin=year,
+      xmax=lead(year))) +
+    geom_point() +
+    geom_vline(xintercept = 2019.5, alpha=.25) +
+    labs(x='Year',y='Difference in births overall')
+```
+    
+## Potential outcomes
+
+- Let $D$ be a treatment indicator. 
+- $Y(1)$ is the outcome that would have been observed if treated.
+- $Y(0)$ is the outcome that would have been observed if untreated. 
+
+| Potential outcome| D=1 | D=0 |
+|---------|:-----|------:|:------:|
+| $Y(1)$      |  $Y$ |   missing   |
+| $Y(0)$     |   missing |  $Y$   |
+
+. . .
+
+Average Treatment Effect on treated
+
+$$\tau_{\mathrm{att}} = \mathbb{E} [Y(1)-Y(0) | D = 1]$$
+
+. . .
+
+If we assume $Y(0) \perp D$, this enables us to use $\mathbb{E} [Y(0) | D = 0]$ in the place of $\mathbb{E} [Y(0) | D = 1]$. In panel data setting other methods based on regression are available, e.g., propensity score matching. 
+
+## Some background: Abadie
+
+- Synthetic control.
+- Covariates made to resemble the treated series.
+- Applied to effect of terrorist activity on GDP in the Basque country.
+- Applied to California tobacco control program.
+
+@abadie2003
+@abadie2010
+
+## Brodersen et al. (2015)
+
+The paper I have chosen to summarise is "INFERRING CAUSAL IMPACT USING BAYESIAN STRUCTURAL
+TIME-SERIES MODELS" by Brodersen et al. (2015).
+
+- Model uncertainty in control selection using Bayesian approach.
+- Use predictors instead of units comparable to the treated series.
+- Demonstrates on Google data. Google trends can be used in place of a control.
+- Application to simulated data which I attempt to reproduce.
+- CausalImpact package.
+
+## The model
+
+In the most general sense Brodersen suggests using a Bayesian structural time-series model. This can be represented as, 
+
+$$
+\begin{split}
+y_t &= Z_t^\intercal \alpha_t + \epsilon_t\\
+\alpha_{t+1} &= T_t \alpha_t + R_t \eta_t.
+\end{split}
+$$
+
+- observation equation
+- state equation
+
+## The model - example
+
+- one predictor $x_t$
+- dynamic coefficient
+- dynamic trend
+- spike and slab prior
+
+$$
+y_t = 
+\left[
+\begin{matrix}
+1 & 0 & x_t\\
+\end{matrix}
+\right]
+\left[\begin{matrix}
+\mu_{t+1}\\
+\delta_{t+1}\\
+\beta_{t+1}
+\end{matrix}\right] + \epsilon_t,
+$$
+
+$$
+\left[\begin{matrix}
+\mu_{t+1}\\
+\delta_{t+1}\\
+\beta_{t+1}
+\end{matrix}\right]
+  = 
+\left[\begin{matrix}
+1 & 0 & 1\\
+0 & 0 & 1\\
+0 & 1 & 0
+\end{matrix}\right]
+  \left[\begin{matrix}
+\mu_{t}\\
+\beta_{t}\\
+\delta_{t}
+\end{matrix}\right]
++
+\left[\begin{matrix}
+1 & 0 & 0 \\
+0 & 1 & 0\\
+0 & 0 & 1
+\end{matrix}
+\right]
+\left[\begin{matrix}
+\eta_{\mu,t}\\
+\eta_{\delta,t}\\
+\eta_{\beta,t}
+\end{matrix}\right].
+$$
+
+## The prior - spike and slab prior
+
+$$
+p(\varrho,\beta,1/\sigma_\epsilon^2)=p(\varrho)p(\sigma_\epsilon^2|\varrho)p(\beta_\varrho|\varrho,\sigma_\epsilon^2)
+$$
+
+::: {layout=[1,1,1]}
+
+::: cell
+
+$$\varrho\sim\text{Bernoulli}(.)$$
+
+```{r}
+#| fig-height: 2.5
+#| fig-width: 2.5
+data.frame(
+  x=0:1,
+  y=c(0.8,0.2)
+) |>
+  ggplot(aes(x,y)) +
+    geom_point() +
+    geom_linerange(aes(ymin=0,ymax=y)) +
+    scale_x_continuous(breaks=c(0,1)) +
+    expand_limits(x=-0.1) +
+    labs(x='\U03F1',y='p(\U03F1)')
+```
+
+:::
+
+::: cell
+
+$$(\beta_\varrho|\sigma_\epsilon^2,\varrho=1)\sim\mathcal{N}(.)$$
+
+```{r}
+#| fig-height: 2.5
+#| fig-width: 2.5
+data.frame(
+  x=seq(-2,2,length.out=1000)
+) |>
+  mutate(y=dnorm(x)) |>
+  ggplot(aes(x,y)) +
+    geom_line() +
+    labs(x=TeX('$\\beta_\U03F1|\\sigma_\\epsilon^2$'), 
+         y=TeX('$p(\\beta_\U03F1|\\sigma_\\epsilon^2, \U03F1=1)$'))
+```
+:::
+
+::: cell
+
+$$(1/\sigma_\epsilon^2|\varrho=1) \sim \mathcal{G}(.)$$
+
+```{r}
+#| fig-height: 2.5
+#| fig-width: 2.5
+data.frame(
+  x=seq(0,2,length.out=1000)
+) |>
+  mutate(y=dgamma(x, rate = 1, shape = 1)) |>
+  ggplot(aes(x,y)) +
+    geom_line() +
+    labs(x=TeX('$1/\\sigma_\\epsilon^2$'),y=TeX('$p(1/\\sigma_\\epsilon^2|\U03F1)$'))
+```
+:::
+
+:::
+
+## The prior - spike and slab prior
+
+$$
+p(\varrho,\beta,1/\sigma_\epsilon^2)=p(\varrho)p(\sigma_\epsilon^2|\varrho)p(\beta_\varrho|\varrho,\sigma_\epsilon^2)
+$$
+
+::: {layout=[1,1,1]}
+
+::: cell
+$$\varrho\sim\text{Bernoulli}(.)$$
+
+- expected model size M
+- J coefficients
+- M/J
+
+:::
+
+::: cell
+$$(\beta_\varrho|\sigma_\epsilon^2,\varrho=1)\sim\mathcal{N}(.)$$
+
+- $R^2$
+- weight to prior (#obs)
+
+:::
+
+::: cell
+$$(1/\sigma_\epsilon^2|\varrho=1) \sim \mathcal{G}(.)$$
+Zellner's g-prior
+:::
+
+:::
+
+
+## Simulation
+
+$$
+\begin{split}
+y_t &= \beta_{t,1}x_{t,1}+\beta_{t,2}x_{t,2}+\mu_t+\epsilon_t\\
+\beta_{t,i} &\sim \mathcal{N}(\beta_{t-1,i},0.01^2);\quad \beta_{0,i}=0; \quad i \in \{1,2\}\\
+\mu_t &\sim \mathcal{N}(\mu_{t-1},0.1^2);\quad\mu_0=20\\
+\epsilon_t &\sim \mathcal{N}(0,0.1^2).
+\end{split}
+$$ 
+
+## Simulation - intervention
+
+@brodersen2015 applies a multiplicative factor to imitate a causal effect so that the final observations are given by
+$y^*_t=y_t \mathbb{I}\{t<366\}+y_t(1+e)(1-\mathbb{I}\{t<366\})$, where
+$\mathbb{I}\{f(t)\}$ is the indicator function that evaluates to 1 when
+$t \in \{w : f(w)\}$ and 0 otherwise.
+
+## Simulation - intervention
+
+{{< embed ../index.qmd#fig-multiplicative-effect >}}
+
+## Simulation settings
+
+- 256 times each
+- $e\in\{0,0.001,0.01,0.05, 0.1, 0.25 ,1\}$
+- $e=0.1$ and $\max T - 366 \in \{30,60,90,120,150,180\}$
+
+## Simulation - example
+
+<div id="divContainer1" style="overflow:auto; height:600px;">
+
+{{< embed ../index.qmd#fig-sample-simulation >}}
+
+</div>
+
+## Simulation - example
+
+<div id="divContainer2" style="overflow:auto; height:600px;">
+
+{{< embed ../index.qmd#fig-sample-causal-impact >}}
+
+</div>
+
+## Simulation - power curve / coverage
+
+<div id="divContainer3" style="overflow:auto; height:600px;">
+
+{{< embed ../index.qmd#fig-power-coverage >}}
+
+</div>
+
+## Simulation - structural change
+
+$$
+\beta_{t,i} \sim 
+\begin{cases}
+\mathcal{N}(\beta_{t-1,i},\ 0.01^2) &\text{if } t < 366+90\\
+\mathcal{N}(\beta_{t-1,i},\ c^2) &\text{otherwise}.
+\end{cases}
+$$
+
+- 64 times each
+- $c\in\{0.01,0.1,0.3\}$
+
+## Simulation - structural change
+
+{{< embed ../index.qmd#fig-structural-change >}}
+
+## Reproducibility
+
+- set.seed()
+- simulation output stored in .Rds for convenience (simulation took $\approx$ 4h)
+- sessionInfo.txt
+- quarto to make report reproducible
+- github
+
+## Conclusion
+
+- Brodersen argues that Bayesian structural time series models are appropriate to assess causality.
+  - His argument from empirical and simulated data hold, but falls short in terms of attention to detail.
+- Brodersen fails to argue using generally accepted causal language -> I formalise somewhat
+- Simulations falls short of reproducible -> I made reproducible
+
+## References
+
+::: {#refs}
+:::
+
+
+
+
+
+
